@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>WatchList Pipeline</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922;--purple:#bc8cff;--cyan:#39d2c0;--scanning:#58a6ff;--building:#d29922;--approaching:#bc8cff;--ready:#3fb950;--onice:#8b949e}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:80px}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.header h1{font-size:18px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header-actions{display:flex;gap:8px}
+.header-actions button{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer}
+.header-actions button:hover{color:var(--text);border-color:var(--muted)}
+.tab-bar{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom)}
+.tab-bar button{flex:1;background:none;border:none;color:var(--muted);padding:10px 4px;font-size:11px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
+.tab-bar button.active{color:var(--accent)}
+.tab-bar button .tab-icon{font-size:20px}
+.view{display:none;padding:12px 16px}
+.view.active{display:block}
+
+/* Pipeline Board */
+.pipeline-summary{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;scrollbar-width:none}
+.pipeline-summary::-webkit-scrollbar{display:none}
+.stage-chip{flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;text-align:center;min-width:100px;cursor:pointer;transition:all .2s}
+.stage-chip.active{border-color:var(--accent);background:#161b2e}
+.stage-chip .chip-count{font-size:22px;font-weight:700}
+.stage-chip .chip-label{font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+.stage-chip[data-stage="scanning"] .chip-count{color:var(--scanning)}
+.stage-chip[data-stage="building"] .chip-count{color:var(--building)}
+.stage-chip[data-stage="approaching"] .chip-count{color:var(--approaching)}
+.stage-chip[data-stage="ready"] .chip-count{color:var(--ready)}
+.stage-chip[data-stage="onice"] .chip-count{color:var(--onice)}
+
+.stock-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.stock-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:all .2s}
+.stock-card:hover{border-color:var(--muted)}
+.stock-card-header{display:flex;justify-content:space-between;align-items:flex-start}
+.stock-ticker{font-size:17px;font-weight:700;letter-spacing:.5px}
+.stock-name{font-size:12px;color:var(--muted);margin-top:1px}
+.stock-price-area{text-align:right}
+.stock-current-price{font-size:16px;font-weight:600}
+.stock-price-distance{font-size:11px;margin-top:2px;font-weight:500}
+.near-target{color:var(--green);font-weight:700}
+.stock-meta{display:flex;gap:12px;margin-top:10px;flex-wrap:wrap}
+.stock-meta-item{font-size:11px;color:var(--muted)}
+.stock-meta-item span{color:var(--text)}
+.setup-tag{display:inline-block;background:#1c2333;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--accent);font-weight:500}
+.stage-badge{display:inline-block;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600}
+.stage-badge.scanning{background:rgba(88,166,255,.15);color:var(--scanning)}
+.stage-badge.building{background:rgba(210,153,34,.15);color:var(--building)}
+.stage-badge.approaching{background:rgba(188,140,255,.15);color:var(--approaching)}
+.stage-badge.ready{background:rgba(63,185,80,.15);color:var(--ready)}
+.stage-badge.onice{background:rgba(139,148,158,.15);color:var(--onice)}
+
+/* Detail Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:flex-end;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--card);border-radius:16px 16px 0 0;width:100%;max-width:500px;max-height:85vh;overflow-y:auto;padding:20px 16px 30px}
+.modal-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px}
+.modal h2{font-size:16px;margin-bottom:16px}
+
+/* Forms */
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+.form-group input,.form-group select,.form-group textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit}
+.form-group textarea{resize:vertical;min-height:70px}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--accent)}
+.form-row{display:flex;gap:10px}
+.form-row .form-group{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:all .15s;font-family:inherit}
+.btn-primary{background:var(--accent);color:#fff;width:100%}
+.btn-primary:hover{opacity:.9}
+.btn-danger{background:var(--red);color:#fff}
+.btn-secondary{background:var(--border);color:var(--text)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-row{display:flex;gap:8px;margin-top:16px}
+.btn-row .btn{flex:1}
+.move-buttons{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.move-btn{padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer;opacity:.85}
+.move-btn:hover{opacity:1}
+.move-btn.scanning{background:rgba(88,166,255,.2);color:var(--scanning)}
+.move-btn.building{background:rgba(210,153,34,.2);color:var(--building)}
+.move-btn.approaching{background:rgba(188,140,255,.2);color:var(--approaching)}
+.move-btn.ready{background:rgba(63,185,80,.2);color:var(--ready)}
+.move-btn.onice{background:rgba(139,148,158,.2);color:var(--onice)}
+
+/* Settings */
+.settings-section{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px}
+.settings-section h3{font-size:14px;margin-bottom:12px;color:var(--accent)}
+.sync-status{font-size:12px;color:var(--muted);margin-top:8px}
+.sync-status.connected{color:var(--green)}
+
+/* Stats */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.stat-tile{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center}
+.stat-tile .stat-val{font-size:24px;font-weight:700}
+.stat-tile .stat-lbl{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* Alerts */
+.alert-banner{background:rgba(63,185,80,.12);border:1px solid rgba(63,185,80,.3);border-radius:10px;padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.alert-banner .alert-icon{font-size:20px}
+.alert-banner .alert-text{font-size:13px}
+.alert-banner .alert-ticker{font-weight:700;color:var(--green)}
+
+/* Empty state */
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty-state .empty-icon{font-size:48px;margin-bottom:12px}
+.empty-state p{font-size:14px}
+
+/* FAB */
+.fab{position:fixed;bottom:75px;right:16px;width:54px;height:54px;border-radius:50%;background:var(--accent);color:#fff;font-size:28px;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(88,166,255,.4);z-index:99;display:flex;align-items:center;justify-content:center}
+.fab:hover{transform:scale(1.05)}
+
+/* Refresh */
+.refresh-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 0}
+.refresh-bar button{background:var(--card);border:1px solid var(--border);color:var(--accent);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px}
+.refresh-bar .last-refresh{font-size:11px;color:var(--muted)}
+
+/* Promote banner */
+.promote-banner{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.25);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:12px;color:var(--green);display:flex;align-items:center;gap:8px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📋 WatchList Pipeline</h1>
+  <div class="header-actions">
+    <button onclick="exportData()" title="Export">📤</button>
+    <button onclick="document.getElementById('importFile').click()" title="Import">📥</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
+</div>
+
+<!-- PIPELINE VIEW -->
+<div class="view active" id="viewPipeline">
+  <div class="pipeline-summary" id="pipelineSummary"></div>
+  <div class="refresh-bar">
+    <button onclick="refreshPrices()">⟳ Refresh Prices</button>
+    <span class="last-refresh" id="lastRefresh"></span>
+  </div>
+  <div id="alertsArea"></div>
+  <div class="stock-list" id="stockList"></div>
+</div>
+
+<!-- STATS VIEW -->
+<div class="view" id="viewStats">
+  <h2 style="font-size:16px;margin-bottom:14px">📊 Pipeline Stats</h2>
+  <div class="stat-grid" id="statGrid"></div>
+  <div id="statsDetail"></div>
+</div>
+
+<!-- SETTINGS VIEW -->
+<div class="view" id="viewSettings">
+  <div class="settings-section">
+    <h3>☁️ Cloud Sync</h3>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="authEmail" placeholder="you@email.com">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="authPass" placeholder="Password">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary btn-sm" onclick="fbLogin()">Log In</button>
+      <button class="btn btn-secondary btn-sm" onclick="fbSignup()">Sign Up</button>
+      <button class="btn btn-secondary btn-sm" onclick="fbLogout()">Log Out</button>
+    </div>
+    <div class="sync-status" id="syncStatus">Not connected</div>
+  </div>
+  <div class="settings-section">
+    <h3>📡 Finnhub API</h3>
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="text" id="fhKey" placeholder="Your Finnhub API key">
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="saveSettings()" style="margin-top:4px">Save Settings</button>
+  </div>
+  <div class="settings-section">
+    <h3>🎯 Alert Threshold</h3>
+    <div class="form-group">
+      <label>Alert when price is within X% of target entry</label>
+      <input type="number" id="alertPct" value="3" min="0.5" max="20" step="0.5">
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
+  </div>
+  <div class="settings-section">
+    <h3>🗑️ Data Management</h3>
+    <button class="btn btn-danger btn-sm" onclick="clearAllData()">Clear All Data</button>
+  </div>
+</div>
+
+<!-- FAB -->
+<button class="fab" id="fabAdd" onclick="openAddModal()">+</button>
+
+<!-- TAB BAR -->
+<div class="tab-bar">
+  <button class="active" onclick="switchTab('Pipeline',this)"><span class="tab-icon">📋</span>Pipeline</button>
+  <button onclick="switchTab('Stats',this)"><span class="tab-icon">📊</span>Stats</button>
+  <button onclick="switchTab('Settings',this)"><span class="tab-icon">⚙️</span>Settings</button>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h2 id="modalTitle">Add to Watchlist</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Ticker</label><input type="text" id="fTicker" placeholder="AAPL" style="text-transform:uppercase"></div>
+      <div class="form-group"><label>Company</label><input type="text" id="fName" placeholder="Apple Inc."></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Stage</label>
+        <select id="fStage">
+          <option value="scanning">🔍 Scanning</option>
+          <option value="building">🧱 Building Base</option>
+          <option value="approaching">📐 Approaching Pivot</option>
+          <option value="ready">🎯 Ready to Buy</option>
+          <option value="onice">❄️ On Ice</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Setup Type</label>
+        <select id="fSetup">
+          <option value="">-- Select --</option>
+          <option value="620">620 Entry</option>
+          <option value="pocket_pivot">Pocket Pivot</option>
+          <option value="breakout">Breakout</option>
+          <option value="base_breakout">Base Breakout</option>
+          <option value="pullback">Pullback to Support</option>
+          <option value="ema21_bounce">21 EMA Bounce</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Target Entry $</label><input type="number" id="fEntry" step="0.01" placeholder="150.00"></div>
+      <div class="form-group"><label>Stop Loss $</label><input type="number" id="fStop" step="0.01" placeholder="145.00"></div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="fNotes" placeholder="What caught your eye? Key levels, volume pattern, catalyst..."></textarea></div>
+    <div class="form-group"><label>DeepVue Theme (optional)</label><input type="text" id="fTheme" placeholder="e.g. AI Infrastructure, Energy"></div>
+    <button class="btn btn-primary" id="btnSave" onclick="saveStock()">Add to Pipeline</button>
+    <div id="editActions" style="display:none">
+      <div class="btn-row">
+        <button class="btn btn-danger btn-sm" onclick="deleteStock()">🗑 Delete</button>
+        <button class="btn btn-secondary btn-sm" onclick="promoteToTrade()">🚀 Copy for TradePath</button>
+      </div>
+      <div style="margin-top:12px">
+        <label style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Move to Stage:</label>
+        <div class="move-buttons" id="moveButtons"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FIREBASE -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+<script>
+// ── Firebase Config ──
+const fbConfig={apiKey:"AIzaSyBhITxqMPHchDPRBMFOkuEkAt3M3V8Bdew",authDomain:"tradepath-app.firebaseapp.com",databaseURL:"https://tradepath-app-default-rtdb.firebaseio.com",projectId:"tradepath-app",storageBucket:"tradepath-app.appspot.com",messagingSenderId:"123456789",appId:"1:123456789:web:abc123"};
+firebase.initializeApp(fbConfig);
+const fbAuth=firebase.auth(), fbDB=firebase.database();
+let fbUID=null;
+
+// ── State ──
+const STAGES=[
+  {id:'scanning',label:'Scanning',icon:'🔍'},
+  {id:'building',label:'Building Base',icon:'🧱'},
+  {id:'approaching',label:'Approaching',icon:'📐'},
+  {id:'ready',label:'Ready to Buy',icon:'🎯'},
+  {id:'onice',label:'On Ice',icon:'❄️'}
+];
+const SETUPS={'620':'620 Entry','pocket_pivot':'Pocket Pivot','breakout':'Breakout','base_breakout':'Base Breakout','pullback':'Pullback to Support','ema21_bounce':'21 EMA Bounce','other':'Other'};
+let stocks=[], settings={fhKey:'',alertPct:3}, editId=null, activeStage='all';
+
+// ── Storage ──
+const DB_NAME='WatchListPipeline', STORE='stocks', SET_STORE='settings';
+function idbOpen(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,2);r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id'});if(!db.objectStoreNames.contains(SET_STORE))db.createObjectStore(SET_STORE,{keyPath:'k'})};r.onsuccess=e=>res(e.target.result);r.onerror=e=>rej(e)})}
+async function idbSave(store,data){const db=await idbOpen();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(data);tx.oncomplete=()=>res();tx.onerror=e=>rej(e)})}
+async function idbGetAll(store){const db=await idbOpen();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const r=tx.objectStore(store).getAll();r.onsuccess=()=>res(r.result);r.onerror=e=>rej(e)})}
+async function idbDelete(store,key){const db=await idbOpen();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>res();tx.onerror=e=>rej(e)})}
+async function idbClear(store){const db=await idbOpen();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).clear();tx.oncomplete=()=>res();tx.onerror=e=>rej(e)})}
+
+// ── Firebase Sync ──
+function fbPath(p){return fbUID?`/users/${fbUID}/watchlist/${p}`:null}
+function dPut(key,val){const p=fbPath(key);if(p)fbDB.ref(p).set(val)}
+function dDel(key){const p=fbPath(key);if(p)fbDB.ref(p).remove()}
+function dAll(cb){const p=fbPath('stocks');if(p)fbDB.ref(p).once('value',snap=>{const d=snap.val();cb(d?Object.values(d):[])})}
+function dPutSettings(val){const p=fbPath('settings');if(p)fbDB.ref(p).set(val)}
+function dGetSettings(cb){const p=fbPath('settings');if(p)fbDB.ref(p).once('value',snap=>cb(snap.val()))}
+
+fbAuth.onAuthStateChanged(async user=>{
+  if(user){
+    fbUID=user.uid;
+    document.getElementById('syncStatus').textContent='✅ Synced as '+user.email;
+    document.getElementById('syncStatus').className='sync-status connected';
+    // Pull from Firebase
+    dGetSettings(s=>{if(s){settings={...settings,...s};applySettings()}});
+    dAll(async fbStocks=>{
+      if(fbStocks.length>0){stocks=fbStocks;for(const s of stocks)await idbSave(STORE,s);render()}
+    });
+  } else {
+    fbUID=null;
+    document.getElementById('syncStatus').textContent='Not connected';
+    document.getElementById('syncStatus').className='sync-status';
+  }
+});
+
+async function fbLogin(){
+  const e=document.getElementById('authEmail').value,p=document.getElementById('authPass').value;
+  try{await fbAuth.signInWithEmailAndPassword(e,p)}catch(err){alert(err.message)}
+}
+async function fbSignup(){
+  const e=document.getElementById('authEmail').value,p=document.getElementById('authPass').value;
+  try{await fbAuth.createUserWithEmailAndPassword(e,p)}catch(err){alert(err.message)}
+}
+async function fbLogout(){try{await fbAuth.signOut()}catch(err){alert(err.message)}}
+
+// ── Init ──
+async function init(){
+  try{
+    const all=await idbGetAll(STORE);if(all.length)stocks=all;
+    const sets=await idbGetAll(SET_STORE);
+    if(sets.length){const s=sets[0];settings={...settings,...s};applySettings()}
+  }catch(e){console.warn('IDB load error',e)}
+  render();
+}
+function applySettings(){
+  document.getElementById('fhKey').value=settings.fhKey||'';
+  document.getElementById('alertPct').value=settings.alertPct||3;
+}
+
+// ── Save / Load Settings ──
+async function saveSettings(){
+  settings.fhKey=document.getElementById('fhKey').value.trim();
+  settings.alertPct=parseFloat(document.getElementById('alertPct').value)||3;
+  await idbSave(SET_STORE,{k:'main',...settings});
+  dPutSettings(settings);
+  alert('Settings saved!');
+}
+
+// ── Render ──
+function render(){
+  renderSummary();
+  renderStockList();
+  renderStats();
+  renderAlerts();
+}
+
+function renderSummary(){
+  const el=document.getElementById('pipelineSummary');
+  const counts={};STAGES.forEach(s=>counts[s.id]=0);
+  stocks.forEach(s=>counts[s.stage]=(counts[s.stage]||0)+1);
+  const total=stocks.length;
+  let html=`<div class="stage-chip ${activeStage==='all'?'active':''}" onclick="filterStage('all')"><div class="chip-count" style="color:var(--accent)">${total}</div><div class="chip-label">All</div></div>`;
+  STAGES.forEach(s=>{
+    html+=`<div class="stage-chip ${activeStage===s.id?'active':''}" data-stage="${s.id}" onclick="filterStage('${s.id}')"><div class="chip-count">${counts[s.id]}</div><div class="chip-label">${s.icon} ${s.label}</div></div>`;
+  });
+  el.innerHTML=html;
+}
+
+function renderStockList(){
+  const el=document.getElementById('stockList');
+  let filtered=activeStage==='all'?stocks:stocks.filter(s=>s.stage===activeStage);
+  filtered.sort((a,b)=>{
+    const order={ready:0,approaching:1,building:2,scanning:3,onice:4};
+    if(order[a.stage]!==order[b.stage])return order[a.stage]-order[b.stage];
+    return(b.dateAdded||0)-(a.dateAdded||0);
+  });
+  if(filtered.length===0){
+    el.innerHTML=`<div class="empty-state"><div class="empty-icon">📋</div><p>No stocks in ${activeStage==='all'?'your pipeline':'this stage'} yet.<br>Tap + to add one.</p></div>`;
+    return;
+  }
+  el.innerHTML=filtered.map(s=>{
+    const stage=STAGES.find(st=>st.id===s.stage)||STAGES[0];
+    const setup=s.setup?SETUPS[s.setup]||s.setup:'';
+    let priceHtml='';
+    if(s.currentPrice){
+      priceHtml=`<div class="stock-current-price">$${parseFloat(s.currentPrice).toFixed(2)}</div>`;
+      if(s.targetEntry){
+        const dist=((s.currentPrice-s.targetEntry)/s.targetEntry*100);
+        const absDist=Math.abs(dist).toFixed(1);
+        const nearClass=absDist<=settings.alertPct?'near-target':'';
+        priceHtml+=`<div class="stock-price-distance ${nearClass}">${dist>0?'+':''}${dist.toFixed(1)}% from target</div>`;
+      }
+    } else if(s.targetEntry){
+      priceHtml=`<div class="stock-current-price" style="color:var(--muted)">T: $${parseFloat(s.targetEntry).toFixed(2)}</div>`;
+    }
+    let metaHtml='';
+    if(setup)metaHtml+=`<span class="setup-tag">${setup}</span> `;
+    if(activeStage==='all')metaHtml+=`<span class="stage-badge ${s.stage}">${stage.icon} ${stage.label}</span> `;
+    if(s.theme)metaHtml+=`<span class="stock-meta-item">🏷 <span>${s.theme}</span></span>`;
+    const daysAgo=s.dateAdded?Math.floor((Date.now()-s.dateAdded)/86400000):0;
+    metaHtml+=`<span class="stock-meta-item">${daysAgo}d ago</span>`;
+    if(s.dateMoved&&s.dateMoved!==s.dateAdded){
+      const moveDays=Math.floor((Date.now()-s.dateMoved)/86400000);
+      metaHtml+=`<span class="stock-meta-item">moved ${moveDays}d ago</span>`;
+    }
+    return`<div class="stock-card" onclick="openEditModal('${s.id}')"><div class="stock-card-header"><div><div class="stock-ticker">${s.ticker}</div><div class="stock-name">${s.name||''}</div></div><div class="stock-price-area">${priceHtml}</div></div><div class="stock-meta">${metaHtml}</div></div>`;
+  }).join('');
+}
+
+function renderAlerts(){
+  const el=document.getElementById('alertsArea');
+  if(!settings.fhKey){el.innerHTML='';return}
+  const alerts=stocks.filter(s=>s.currentPrice&&s.targetEntry&&s.stage!=='onice').filter(s=>{
+    const dist=Math.abs((s.currentPrice-s.targetEntry)/s.targetEntry*100);
+    return dist<=settings.alertPct;
+  });
+  if(alerts.length===0){el.innerHTML='';return}
+  el.innerHTML=alerts.map(s=>{
+    const dist=((s.currentPrice-s.targetEntry)/s.targetEntry*100);
+    return`<div class="alert-banner"><span class="alert-icon">🎯</span><div class="alert-text"><span class="alert-ticker">${s.ticker}</span> is ${Math.abs(dist).toFixed(1)}% ${dist>0?'above':'below'} your target entry of $${parseFloat(s.targetEntry).toFixed(2)}</div></div>`;
+  }).join('');
+}
+
+function renderStats(){
+  const el=document.getElementById('statGrid');
+  const det=document.getElementById('statsDetail');
+  const total=stocks.length;
+  const ready=stocks.filter(s=>s.stage==='ready').length;
+  const approaching=stocks.filter(s=>s.stage==='approaching').length;
+  const avgDays=total>0?Math.round(stocks.reduce((a,s)=>(a+(Date.now()-(s.dateAdded||Date.now()))/86400000),0)/total):0;
+  const setupCounts={};stocks.forEach(s=>{if(s.setup){setupCounts[s.setup]=(setupCounts[s.setup]||0)+1}});
+  const themeCounts={};stocks.forEach(s=>{if(s.theme){themeCounts[s.theme]=(themeCounts[s.theme]||0)+1}});
+
+  el.innerHTML=`
+    <div class="stat-tile"><div class="stat-val" style="color:var(--accent)">${total}</div><div class="stat-lbl">Total Watching</div></div>
+    <div class="stat-tile"><div class="stat-val" style="color:var(--green)">${ready}</div><div class="stat-lbl">Ready to Buy</div></div>
+    <div class="stat-tile"><div class="stat-val" style="color:var(--purple)">${approaching}</div><div class="stat-lbl">Approaching</div></div>
+    <div class="stat-tile"><div class="stat-val">${avgDays}d</div><div class="stat-lbl">Avg Time Watching</div></div>
+  `;
+
+  let detailHtml='';
+  if(Object.keys(setupCounts).length){
+    detailHtml+='<div class="settings-section"><h3>Setups Breakdown</h3>';
+    Object.entries(setupCounts).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>{
+      detailHtml+=`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px"><span>${SETUPS[k]||k}</span><span style="color:var(--accent);font-weight:600">${v}</span></div>`;
+    });
+    detailHtml+='</div>';
+  }
+  if(Object.keys(themeCounts).length){
+    detailHtml+='<div class="settings-section"><h3>Themes</h3>';
+    Object.entries(themeCounts).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>{
+      detailHtml+=`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px"><span>${k}</span><span style="color:var(--purple);font-weight:600">${v}</span></div>`;
+    });
+    detailHtml+='</div>';
+  }
+  det.innerHTML=detailHtml;
+}
+
+// ── Stage Filter ──
+function filterStage(stage){activeStage=stage;render()}
+
+// ── Tab Switch ──
+function switchTab(name,btn){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view'+name).classList.add('active');
+  document.querySelectorAll('.tab-bar button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('fabAdd').style.display=name==='Pipeline'?'flex':'none';
+}
+
+// ── Modal ──
+function openAddModal(){
+  editId=null;
+  document.getElementById('modalTitle').textContent='Add to Watchlist';
+  document.getElementById('btnSave').textContent='Add to Pipeline';
+  document.getElementById('editActions').style.display='none';
+  document.getElementById('fTicker').value='';
+  document.getElementById('fName').value='';
+  document.getElementById('fStage').value='scanning';
+  document.getElementById('fSetup').value='';
+  document.getElementById('fEntry').value='';
+  document.getElementById('fStop').value='';
+  document.getElementById('fNotes').value='';
+  document.getElementById('fTheme').value='';
+  document.getElementById('fTicker').removeAttribute('disabled');
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function openEditModal(id){
+  const s=stocks.find(x=>x.id===id);if(!s)return;
+  editId=id;
+  document.getElementById('modalTitle').textContent='Edit — '+s.ticker;
+  document.getElementById('btnSave').textContent='Save Changes';
+  document.getElementById('editActions').style.display='block';
+  document.getElementById('fTicker').value=s.ticker;
+  document.getElementById('fTicker').setAttribute('disabled','true');
+  document.getElementById('fName').value=s.name||'';
+  document.getElementById('fStage').value=s.stage;
+  document.getElementById('fSetup').value=s.setup||'';
+  document.getElementById('fEntry').value=s.targetEntry||'';
+  document.getElementById('fStop').value=s.stopLoss||'';
+  document.getElementById('fNotes').value=s.notes||'';
+  document.getElementById('fTheme').value=s.theme||'';
+  // Move buttons (all stages except current)
+  const mb=document.getElementById('moveButtons');
+  mb.innerHTML=STAGES.filter(st=>st.id!==s.stage).map(st=>`<button class="move-btn ${st.id}" onclick="moveStock('${id}','${st.id}')">${st.icon} ${st.label}</button>`).join('');
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal(e){if(e.target===document.getElementById('modalOverlay'))document.getElementById('modalOverlay').classList.remove('open')}
+
+// ── CRUD ──
+async function saveStock(){
+  const ticker=document.getElementById('fTicker').value.trim().toUpperCase();
+  if(!ticker){alert('Ticker is required');return}
+  const now=Date.now();
+  if(editId){
+    const s=stocks.find(x=>x.id===editId);if(!s)return;
+    const oldStage=s.stage;
+    s.name=document.getElementById('fName').value.trim();
+    s.stage=document.getElementById('fStage').value;
+    s.setup=document.getElementById('fSetup').value;
+    s.targetEntry=parseFloat(document.getElementById('fEntry').value)||null;
+    s.stopLoss=parseFloat(document.getElementById('fStop').value)||null;
+    s.notes=document.getElementById('fNotes').value.trim();
+    s.theme=document.getElementById('fTheme').value.trim();
+    if(s.stage!==oldStage){s.dateMoved=now;if(!s.history)s.history=[];s.history.push({from:oldStage,to:s.stage,date:now})}
+    s.dateUpdated=now;
+    await idbSave(STORE,s);
+    dPut('stocks/'+s.id,s);
+  } else {
+    // Check duplicate
+    if(stocks.find(x=>x.ticker===ticker)){alert(ticker+' is already in your pipeline');return}
+    const ns={
+      id:'wl_'+now+'_'+Math.random().toString(36).substr(2,6),
+      ticker,
+      name:document.getElementById('fName').value.trim(),
+      stage:document.getElementById('fStage').value,
+      setup:document.getElementById('fSetup').value,
+      targetEntry:parseFloat(document.getElementById('fEntry').value)||null,
+      stopLoss:parseFloat(document.getElementById('fStop').value)||null,
+      notes:document.getElementById('fNotes').value.trim(),
+      theme:document.getElementById('fTheme').value.trim(),
+      currentPrice:null,
+      dateAdded:now,
+      dateMoved:now,
+      dateUpdated:now,
+      history:[{from:null,to:document.getElementById('fStage').value,date:now}]
+    };
+    stocks.push(ns);
+    await idbSave(STORE,ns);
+    dPut('stocks/'+ns.id,ns);
+  }
+  document.getElementById('modalOverlay').classList.remove('open');
+  render();
+}
+
+async function deleteStock(){
+  if(!editId)return;
+  if(!confirm('Remove this stock from your watchlist?'))return;
+  const s=stocks.find(x=>x.id===editId);
+  stocks=stocks.filter(x=>x.id!==editId);
+  await idbDelete(STORE,editId);
+  if(s)dDel('stocks/'+editId);
+  editId=null;
+  document.getElementById('modalOverlay').classList.remove('open');
+  render();
+}
+
+async function moveStock(id,newStage){
+  const s=stocks.find(x=>x.id===id);if(!s)return;
+  const now=Date.now();
+  const old=s.stage;
+  s.stage=newStage;
+  s.dateMoved=now;
+  s.dateUpdated=now;
+  if(!s.history)s.history=[];
+  s.history.push({from:old,to:newStage,date:now});
+  await idbSave(STORE,s);
+  dPut('stocks/'+s.id,s);
+  document.getElementById('modalOverlay').classList.remove('open');
+  render();
+}
+
+function promoteToTrade(){
+  const s=stocks.find(x=>x.id===editId);if(!s)return;
+  const text=`Ticker: ${s.ticker}\nEntry: $${s.targetEntry||'—'}\nStop: $${s.stopLoss||'—'}\nSetup: ${SETUPS[s.setup]||s.setup||'—'}\nNotes: ${s.notes||'—'}`;
+  navigator.clipboard.writeText(text.replace(/\n/g,'\n')).then(()=>alert('Copied to clipboard! Paste into TradePath.')).catch(()=>alert(text));
+}
+
+// ── Finnhub Price Refresh ──
+async function refreshPrices(){
+  if(!settings.fhKey){alert('Add your Finnhub API key in Settings first.');return}
+  const btn=document.querySelector('.refresh-bar button');
+  const tickers=[...new Set(stocks.filter(s=>s.stage!=='onice').map(s=>s.ticker))];
+  if(tickers.length===0){alert('No active stocks to refresh.');return}
+  btn.textContent='⏳ Refreshing...';btn.disabled=true;
+  let updated=0;
+  for(const ticker of tickers){
+    try{
+      const resp=await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${settings.fhKey}`);
+      const data=await resp.json();
+      if(data.c&&data.c>0){
+        stocks.filter(s=>s.ticker===ticker).forEach(s=>{s.currentPrice=data.c;s.priceUpdated=Date.now()});
+        updated++;
+      }
+    }catch(e){console.warn('Price fetch failed for',ticker,e)}
+    await new Promise(r=>setTimeout(r,200));
+  }
+  // Save all
+  for(const s of stocks){await idbSave(STORE,s);dPut('stocks/'+s.id,s)}
+  btn.textContent='⟳ Refresh Prices';btn.disabled=false;
+  document.getElementById('lastRefresh').textContent=`Updated ${updated}/${tickers.length} • ${new Date().toLocaleTimeString()}`;
+  render();
+}
+
+// ── Export / Import ──
+function exportData(){
+  const data=JSON.stringify({stocks,settings,exportDate:new Date().toISOString()},null,2);
+  const blob=new Blob([data],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='watchlist-pipeline-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+}
+async function importData(e){
+  const file=e.target.files[0];if(!file)return;
+  try{
+    const text=await file.text();
+    const data=JSON.parse(text);
+    if(data.stocks){
+      stocks=data.stocks;
+      for(const s of stocks)await idbSave(STORE,s);
+      for(const s of stocks)dPut('stocks/'+s.id,s);
+    }
+    if(data.settings){settings={...settings,...data.settings};await idbSave(SET_STORE,{k:'main',...settings});dPutSettings(settings);applySettings()}
+    render();
+    alert('Imported '+stocks.length+' stocks!');
+  }catch(err){alert('Import failed: '+err.message)}
+  e.target.value='';
+}
+async function clearAllData(){
+  if(!confirm('Delete ALL watchlist data? This cannot be undone.'))return;
+  if(!confirm('Are you really sure?'))return;
+  stocks=[];
+  await idbClear(STORE);
+  if(fbUID)fbDB.ref(fbPath('stocks')).remove();
+  render();
+}
+
+// ── Boot ──
+init();
+</script>
+</body>
+</html>
