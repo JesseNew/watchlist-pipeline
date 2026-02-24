@@ -265,7 +265,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,san
 
 <script>
 // ── Firebase Config ──
-const fbConfig={apiKey:"AIzaSyBhITxqMPHchDPRBMFOkuEkAt3M3V8Bdew",authDomain:"tradepath-app.firebaseapp.com",databaseURL:"https://tradepath-app-default-rtdb.firebaseio.com",projectId:"tradepath-app",storageBucket:"tradepath-app.appspot.com",messagingSenderId:"123456789",appId:"1:123456789:web:abc123"};
+const fbConfig={apiKey:"AIzaSyCPRq6bqXGxR4hnAER0IOOJooE2mFdKayc",authDomain:"tradepath-38581.firebaseapp.com",databaseURL:"https://tradepath-38581-default-rtdb.firebaseio.com",projectId:"tradepath-38581",storageBucket:"tradepath-38581.firebasestorage.app",messagingSenderId:"92817229043",appId:"1:92817229043:web:9138c748c64360d4d1e386"};
 firebase.initializeApp(fbConfig);
 const fbAuth=firebase.auth(), fbDB=firebase.database();
 let fbUID=null;
@@ -290,7 +290,7 @@ async function idbDelete(store,key){const db=await idbOpen();return new Promise(
 async function idbClear(store){const db=await idbOpen();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).clear();tx.oncomplete=()=>res();tx.onerror=e=>rej(e)})}
 
 // ── Firebase Sync ──
-function fbPath(p){return fbUID?`/users/${fbUID}/watchlist/${p}`:null}
+function fbPath(p){return fbUID?'/users/'+fbUID+'/watchlist/'+p:null}
 function dPut(key,val){const p=fbPath(key);if(p)fbDB.ref(p).set(val)}
 function dDel(key){const p=fbPath(key);if(p)fbDB.ref(p).remove()}
 function dAll(cb){const p=fbPath('stocks');if(p)fbDB.ref(p).once('value',snap=>{const d=snap.val();cb(d?Object.values(d):[])})}
@@ -360,9 +360,9 @@ function renderSummary(){
   const counts={};STAGES.forEach(s=>counts[s.id]=0);
   stocks.forEach(s=>counts[s.stage]=(counts[s.stage]||0)+1);
   const total=stocks.length;
-  let html=`<div class="stage-chip ${activeStage==='all'?'active':''}" onclick="filterStage('all')"><div class="chip-count" style="color:var(--accent)">${total}</div><div class="chip-label">All</div></div>`;
+  let html='<div class="stage-chip '+(activeStage==='all'?'active':'')+'" onclick="filterStage(\'all\')"><div class="chip-count" style="color:var(--accent)">'+total+'</div><div class="chip-label">All</div></div>';
   STAGES.forEach(s=>{
-    html+=`<div class="stage-chip ${activeStage===s.id?'active':''}" data-stage="${s.id}" onclick="filterStage('${s.id}')"><div class="chip-count">${counts[s.id]}</div><div class="chip-label">${s.icon} ${s.label}</div></div>`;
+    html+='<div class="stage-chip '+(activeStage===s.id?'active':'')+'" data-stage="'+s.id+'" onclick="filterStage(\''+s.id+'\')"><div class="chip-count">'+counts[s.id]+'</div><div class="chip-label">'+s.icon+' '+s.label+'</div></div>';
   });
   el.innerHTML=html;
 }
@@ -376,7 +376,7 @@ function renderStockList(){
     return(b.dateAdded||0)-(a.dateAdded||0);
   });
   if(filtered.length===0){
-    el.innerHTML=`<div class="empty-state"><div class="empty-icon">📋</div><p>No stocks in ${activeStage==='all'?'your pipeline':'this stage'} yet.<br>Tap + to add one.</p></div>`;
+    el.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><p>No stocks in '+(activeStage==='all'?'your pipeline':'this stage')+' yet.<br>Tap + to add one.</p></div>';
     return;
   }
   el.innerHTML=filtered.map(s=>{
@@ -384,27 +384,27 @@ function renderStockList(){
     const setup=s.setup?SETUPS[s.setup]||s.setup:'';
     let priceHtml='';
     if(s.currentPrice){
-      priceHtml=`<div class="stock-current-price">$${parseFloat(s.currentPrice).toFixed(2)}</div>`;
+      priceHtml='<div class="stock-current-price">$'+parseFloat(s.currentPrice).toFixed(2)+'</div>';
       if(s.targetEntry){
         const dist=((s.currentPrice-s.targetEntry)/s.targetEntry*100);
         const absDist=Math.abs(dist).toFixed(1);
         const nearClass=absDist<=settings.alertPct?'near-target':'';
-        priceHtml+=`<div class="stock-price-distance ${nearClass}">${dist>0?'+':''}${dist.toFixed(1)}% from target</div>`;
+        priceHtml+='<div class="stock-price-distance '+nearClass+'">'+(dist>0?'+':'')+dist.toFixed(1)+'% from target</div>';
       }
     } else if(s.targetEntry){
-      priceHtml=`<div class="stock-current-price" style="color:var(--muted)">T: $${parseFloat(s.targetEntry).toFixed(2)}</div>`;
+      priceHtml='<div class="stock-current-price" style="color:var(--muted)">T: $'+parseFloat(s.targetEntry).toFixed(2)+'</div>';
     }
     let metaHtml='';
-    if(setup)metaHtml+=`<span class="setup-tag">${setup}</span> `;
-    if(activeStage==='all')metaHtml+=`<span class="stage-badge ${s.stage}">${stage.icon} ${stage.label}</span> `;
-    if(s.theme)metaHtml+=`<span class="stock-meta-item">🏷 <span>${s.theme}</span></span>`;
+    if(setup)metaHtml+='<span class="setup-tag">'+setup+'</span> ';
+    if(activeStage==='all')metaHtml+='<span class="stage-badge '+s.stage+'">'+stage.icon+' '+stage.label+'</span> ';
+    if(s.theme)metaHtml+='<span class="stock-meta-item">🏷 <span>'+s.theme+'</span></span>';
     const daysAgo=s.dateAdded?Math.floor((Date.now()-s.dateAdded)/86400000):0;
-    metaHtml+=`<span class="stock-meta-item">${daysAgo}d ago</span>`;
+    metaHtml+='<span class="stock-meta-item">'+daysAgo+'d ago</span>';
     if(s.dateMoved&&s.dateMoved!==s.dateAdded){
       const moveDays=Math.floor((Date.now()-s.dateMoved)/86400000);
-      metaHtml+=`<span class="stock-meta-item">moved ${moveDays}d ago</span>`;
+      metaHtml+='<span class="stock-meta-item">moved '+moveDays+'d ago</span>';
     }
-    return`<div class="stock-card" onclick="openEditModal('${s.id}')"><div class="stock-card-header"><div><div class="stock-ticker">${s.ticker}</div><div class="stock-name">${s.name||''}</div></div><div class="stock-price-area">${priceHtml}</div></div><div class="stock-meta">${metaHtml}</div></div>`;
+    return'<div class="stock-card" onclick="openEditModal(\''+s.id+'\')"><div class="stock-card-header"><div><div class="stock-ticker">'+s.ticker+'</div><div class="stock-name">'+(s.name||'')+'</div></div><div class="stock-price-area">'+priceHtml+'</div></div><div class="stock-meta">'+metaHtml+'</div></div>';
   }).join('');
 }
 
@@ -418,7 +418,7 @@ function renderAlerts(){
   if(alerts.length===0){el.innerHTML='';return}
   el.innerHTML=alerts.map(s=>{
     const dist=((s.currentPrice-s.targetEntry)/s.targetEntry*100);
-    return`<div class="alert-banner"><span class="alert-icon">🎯</span><div class="alert-text"><span class="alert-ticker">${s.ticker}</span> is ${Math.abs(dist).toFixed(1)}% ${dist>0?'above':'below'} your target entry of $${parseFloat(s.targetEntry).toFixed(2)}</div></div>`;
+    return'<div class="alert-banner"><span class="alert-icon">🎯</span><div class="alert-text"><span class="alert-ticker">'+s.ticker+'</span> is '+Math.abs(dist).toFixed(1)+'% '+(dist>0?'above':'below')+' your target entry of $'+parseFloat(s.targetEntry).toFixed(2)+'</div></div>';
   }).join('');
 }
 
@@ -432,25 +432,24 @@ function renderStats(){
   const setupCounts={};stocks.forEach(s=>{if(s.setup){setupCounts[s.setup]=(setupCounts[s.setup]||0)+1}});
   const themeCounts={};stocks.forEach(s=>{if(s.theme){themeCounts[s.theme]=(themeCounts[s.theme]||0)+1}});
 
-  el.innerHTML=`
-    <div class="stat-tile"><div class="stat-val" style="color:var(--accent)">${total}</div><div class="stat-lbl">Total Watching</div></div>
-    <div class="stat-tile"><div class="stat-val" style="color:var(--green)">${ready}</div><div class="stat-lbl">Ready to Buy</div></div>
-    <div class="stat-tile"><div class="stat-val" style="color:var(--purple)">${approaching}</div><div class="stat-lbl">Approaching</div></div>
-    <div class="stat-tile"><div class="stat-val">${avgDays}d</div><div class="stat-lbl">Avg Time Watching</div></div>
-  `;
+  el.innerHTML=
+    '<div class="stat-tile"><div class="stat-val" style="color:var(--accent)">'+total+'</div><div class="stat-lbl">Total Watching</div></div>'+
+    '<div class="stat-tile"><div class="stat-val" style="color:var(--green)">'+ready+'</div><div class="stat-lbl">Ready to Buy</div></div>'+
+    '<div class="stat-tile"><div class="stat-val" style="color:var(--purple)">'+approaching+'</div><div class="stat-lbl">Approaching</div></div>'+
+    '<div class="stat-tile"><div class="stat-val">'+avgDays+'d</div><div class="stat-lbl">Avg Time Watching</div></div>';
 
   let detailHtml='';
   if(Object.keys(setupCounts).length){
     detailHtml+='<div class="settings-section"><h3>Setups Breakdown</h3>';
     Object.entries(setupCounts).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>{
-      detailHtml+=`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px"><span>${SETUPS[k]||k}</span><span style="color:var(--accent);font-weight:600">${v}</span></div>`;
+      detailHtml+='<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px"><span>'+(SETUPS[k]||k)+'</span><span style="color:var(--accent);font-weight:600">'+v+'</span></div>';
     });
     detailHtml+='</div>';
   }
   if(Object.keys(themeCounts).length){
     detailHtml+='<div class="settings-section"><h3>Themes</h3>';
     Object.entries(themeCounts).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>{
-      detailHtml+=`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px"><span>${k}</span><span style="color:var(--purple);font-weight:600">${v}</span></div>`;
+      detailHtml+='<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px"><span>'+k+'</span><span style="color:var(--purple);font-weight:600">'+v+'</span></div>';
     });
     detailHtml+='</div>';
   }
@@ -504,7 +503,7 @@ function openEditModal(id){
   document.getElementById('fTheme').value=s.theme||'';
   // Move buttons (all stages except current)
   const mb=document.getElementById('moveButtons');
-  mb.innerHTML=STAGES.filter(st=>st.id!==s.stage).map(st=>`<button class="move-btn ${st.id}" onclick="moveStock('${id}','${st.id}')">${st.icon} ${st.label}</button>`).join('');
+  mb.innerHTML=STAGES.filter(st=>st.id!==s.stage).map(st=>'<button class="move-btn '+st.id+'" onclick="moveStock(\''+id+"','"+st.id+'\')">'+st.icon+' '+st.label+'</button>').join('');
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -585,8 +584,8 @@ async function moveStock(id,newStage){
 
 function promoteToTrade(){
   const s=stocks.find(x=>x.id===editId);if(!s)return;
-  const text=`Ticker: ${s.ticker}\nEntry: $${s.targetEntry||'—'}\nStop: $${s.stopLoss||'—'}\nSetup: ${SETUPS[s.setup]||s.setup||'—'}\nNotes: ${s.notes||'—'}`;
-  navigator.clipboard.writeText(text.replace(/\n/g,'\n')).then(()=>alert('Copied to clipboard! Paste into TradePath.')).catch(()=>alert(text));
+  const text='Ticker: '+s.ticker+'\nEntry: $'+(s.targetEntry||'—')+'\nStop: $'+(s.stopLoss||'—')+'\nSetup: '+(SETUPS[s.setup]||s.setup||'—')+'\nNotes: '+(s.notes||'—');
+  navigator.clipboard.writeText(text).then(()=>alert('Copied to clipboard! Paste into TradePath.')).catch(()=>alert(text));
 }
 
 // ── Finnhub Price Refresh ──
@@ -599,7 +598,7 @@ async function refreshPrices(){
   let updated=0;
   for(const ticker of tickers){
     try{
-      const resp=await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${settings.fhKey}`);
+      const resp=await fetch('https://finnhub.io/api/v1/quote?symbol='+encodeURIComponent(ticker)+'&token='+settings.fhKey);
       const data=await resp.json();
       if(data.c&&data.c>0){
         stocks.filter(s=>s.ticker===ticker).forEach(s=>{s.currentPrice=data.c;s.priceUpdated=Date.now()});
@@ -611,7 +610,7 @@ async function refreshPrices(){
   // Save all
   for(const s of stocks){await idbSave(STORE,s);dPut('stocks/'+s.id,s)}
   btn.textContent='⟳ Refresh Prices';btn.disabled=false;
-  document.getElementById('lastRefresh').textContent=`Updated ${updated}/${tickers.length} • ${new Date().toLocaleTimeString()}`;
+  document.getElementById('lastRefresh').textContent='Updated '+updated+'/'+tickers.length+' • '+new Date().toLocaleTimeString();
   render();
 }
 
